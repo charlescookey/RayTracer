@@ -140,7 +140,7 @@ class BoxFilter : public ImageFilter
 public:
 	float filter(float x, float y) const
 	{
-		if (fabsf(x) < 0.5f && fabs(y) < 0.5f)
+		if (fabsf(x) <= 0.5f && fabs(y) <= 0.5f)
 		{
 			return 1.0f;
 		}
@@ -149,6 +149,67 @@ public:
 	int size() const
 	{
 		return 0;
+	}
+};
+
+float radius = 1.f;
+float Nalpha = -1.f;
+
+float secondPart = std::exp(Nalpha * pow(radius, 2));
+class GaussianFilter : public ImageFilter
+{
+	float radius = 1.f;
+	float alpha = 1.f;
+public:
+
+	float gauss(int d, int radius) const {
+		return std::exp(Nalpha * pow(d, 2)) - secondPart;
+
+	}
+	float filter(float x, float y) const
+	{
+		return gauss(x, radius) * gauss(y, radius);
+	}
+	int size() const
+	{
+		return radius;
+	}
+};
+
+class MitchellNetravaliFilter : public ImageFilter
+{
+public:
+	float B = 1.f / 3.f;
+	float C = 1.f / 3.f;
+
+	float a1 = 12 - (9 * B) - (6 * C);
+	float b1 = -18 + (12 * B) + (6 * C);
+	float c1 = 6 - (2 * B);
+	float a2 = (-B) - (6 * C);
+	float b2 = (6 * B) + (30 * C);
+	float c2 = -(12 * B) - (48 * C);
+	float d2 = (8 * B) - (24 * C);
+
+	float MN(float y) const {
+		float x = fabsf(y);
+		if (fabsf(x) <= 0.0f && fabs(x) < 1.0f)
+		{
+			return ((a1 * pow(x, 3)) + (b1 * pow(x, 2)) + (c1)) / 6;
+		}
+		else if (fabsf(x) <= 1.0f && fabs(x) < 2.0f) {
+			return ((a2 * pow(x, 3)) + (b2 * pow(x, 2)) + (c2 * x) + d2) / 6;
+		}
+		else if (fabsf(x) >= 2) {
+			return 0;
+		}
+	}
+	float filter(float x, float y) const
+	{
+		return MN(x) * MN(y);
+	}
+	int size() const
+	{
+		return 2;
 	}
 };
 

@@ -25,6 +25,7 @@ public:
 	}
 };
 
+const float RAdius = 1.f;
 // Note all of these distributions assume z-up coordinate system
 class SamplingDistributions
 {
@@ -32,31 +33,52 @@ public:
 	static Vec3 uniformSampleHemisphere(float r1, float r2)
 	{
 		// Add code here
-		return Vec3(0, 0, 1);
+		float theta = acos(r1);
+		float phi = 2 * M_PI * r2;
+
+		float x = RAdius * sin(theta) * cos(phi);
+		float y = RAdius * sin(theta) * sin(phi);
+		float z = RAdius * cos(theta);
+
+		return Vec3(x, y, z);
 	}
 	static float uniformHemispherePDF(const Vec3 wi)
 	{
 		// Add code here
-		return 1.0f;
+		return 1.0f / 2 * M_PI;
 	}
 	static Vec3 cosineSampleHemisphere(float r1, float r2)
 	{
 		// Add code here
-		return Vec3(0, 0, 1);
+		float theta = acos(sqrtf(r1));
+		float phi = 2 * M_PI * r2;
+
+		float x = RAdius * sin(theta) * cos(phi);
+		float y = RAdius * sin(theta) * sin(phi);
+		float z = RAdius * cos(theta);
+
+		return Vec3(x, y, z);;
 	}
 	static float cosineHemispherePDF(const Vec3 wi)
 	{
 		// Add code here
-		return 1.0f;
+		return wi.z / M_PI;
 	}
 	static Vec3 uniformSampleSphere(float r1, float r2)
 	{
 		// Add code here
-		return Vec3(0, 0, 1);
+		float theta = acos(1 - (2 * r1));
+		float phi = 2 * M_PI * r2;
+
+		float x = RAdius * sin(theta) * cos(phi);
+		float y = RAdius * sin(theta) * sin(phi);
+		float z = RAdius * cos(theta);
+
+		return Vec3(x, y, z);
 	}
 	static float uniformSpherePDF(const Vec3& wi)
 	{
 		// Add code here
-		return 1.0f;
+		return 1.0f / 4 * M_PI;
 	}
 };

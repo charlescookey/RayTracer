@@ -7,6 +7,8 @@
 #include "Materials.h"
 #include "Lights.h"
 
+bool UseBVH = true;
+
 class Camera
 {
 public:
@@ -30,6 +32,19 @@ public:
 	Ray generateRay(float x, float y)
 	{
 		Vec3 dir(0, 0, 1);
+
+		float xc = ((2 * x) / (width - 1)) - 1;
+		float yc = 1 - ((2 * y) / (height - 1));
+
+		Vec3 pclip = Vec3(xc, yc, 0, 1);
+		Vec3 pcamera = inverseProjectionMatrix.mulPointAndPerspectiveDivide(pclip);
+
+
+		Vec3 dcamera = camera.mulPointAndPerspectiveDivide(pcamera);
+
+		dir = dcamera - origin;
+
+
 		return Ray(origin, dir);
 	}
 };
@@ -47,7 +62,13 @@ public:
 	void build()
 	{
 		// Add BVH building code here
-		
+
+		if (UseBVH) {
+			bvh = new BVHNode();
+			bvh->build(triangles);
+			bvh->print2();
+		}
+
 		// Do not touch the code below this line!
 		// Build light list
 		for (int i = 0; i < triangles.size(); i++)
@@ -63,6 +84,9 @@ public:
 	}
 	IntersectionData traverse(const Ray& ray)
 	{
+		if (UseBVH)
+			return bvh->traverse(ray, triangles);
+
 		IntersectionData intersection;
 		intersection.t = FLT_MAX;
 		for (int i = 0; i < triangles.size(); i++)
@@ -115,7 +139,10 @@ public:
 		float maxT = dir.length() - (2.0f * EPSILON);
 		dir = dir.normalize();
 		ray.init(p1 + (dir * EPSILON), dir);
-		return bvh->traverseVisible(ray, triangles, maxT);
+		if (UseBVH) {
+			return bvh->traverseVisible(ray, triangles, maxT);
+		}
+		return true;
 	}
 	Colour emit(Triangle* light, ShadingData shadingData, Vec3 wi)
 	{
@@ -144,7 +171,8 @@ public:
 			}
 			shadingData.frame.fromVector(shadingData.sNormal);
 			shadingData.t = intersection.t;
-		} else
+		}
+		else
 		{
 			shadingData.wo = -ray.dir;
 			shadingData.t = intersection.t;

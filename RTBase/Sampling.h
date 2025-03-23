@@ -10,6 +10,8 @@ public:
 	virtual float next() = 0;
 };
 
+
+//onr per thread, seed diuff for diff thread, one mark
 class MTRandom : public Sampler
 {
 public:

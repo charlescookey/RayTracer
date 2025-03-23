@@ -12,13 +12,17 @@ void runTests()
 	// Add test code here
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
 	// Add call to tests if required
 	// runTests()
-	
+
 	// Initialize default parameters
 	std::string sceneName = "cornell-box";
+	//std::string sceneName = "veach-mis";
+	//std::string sceneName = "dining-room";
+	//std::string sceneName = "kitchen";
+	//std::string sceneName = "coffee";
 	std::string filename = "GI.hdr";
 	unsigned int SPP = 8192;
 
@@ -35,11 +39,13 @@ int main(int argc, char *argv[])
 				{
 					std::string argValue = argv[++i];
 					args[argName] = argValue;
-				} else
+				}
+				else
 				{
 					std::cerr << "Error: Missing value for argument '" << arg << "'\n";
 				}
-			} else
+			}
+			else
 			{
 				std::cerr << "Warning: Ignoring unexpected argument '" << arg << "'\n";
 			}

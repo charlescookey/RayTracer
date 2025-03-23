@@ -67,6 +67,8 @@ public:
 			bvh = new BVHNode();
 			bvh->build(triangles);
 			bvh->print2();
+			std::cout << "number of triangle: " << triangles.size() << "\n";
+			std::cout << "maxdepth: " << bvh->maxD() << "\n";
 		}
 
 		// Do not touch the code below this line!
@@ -110,7 +112,8 @@ public:
 	}
 	Light* sampleLight(Sampler* sampler, float& pmf)
 	{
-		return NULL;
+		pmf = 1.f / lights.size();
+		return lights[(std::min)( (int)(lights.size() * sampler->next()), (int)(lights.size() -1))];
 	}
 	// Do not modify any code below this line
 	void init(std::vector<Triangle> meshTriangles, std::vector<BSDF*> meshMaterials, Light* _background)

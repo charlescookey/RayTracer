@@ -18,11 +18,13 @@ int main(int argc, char* argv[])
 	// runTests()
 
 	// Initialize default parameters
-	std::string sceneName = "cornell-box";
+	//std::string sceneName = "cornell-box";
 	//std::string sceneName = "veach-mis";
 	//std::string sceneName = "dining-room";
+	//std::string sceneName = "living-room";
+	//std::string sceneName = "bathroom";
 	//std::string sceneName = "kitchen";
-	//std::string sceneName = "coffee";
+	std::string sceneName = "coffee";
 	std::string filename = "GI.hdr";
 	unsigned int SPP = 8192;
 

@@ -47,6 +47,7 @@ public:
 };
 
 #define EPSILON 0.001f
+#define M_EPSILON 0.00001f
 
 class Triangle
 {
@@ -55,6 +56,9 @@ public:
 	Vec3 e1; // Edge 1
 	Vec3 e2; // Edge 2
 	Vec3 n; // Geometric Normal
+
+	Vec3 em1;
+	Vec3 em2;
 	Vec3 nPrime;
 	float area; // Triangle area
 	float d; // For ray triangle if needed
@@ -67,6 +71,9 @@ public:
 		vertices[2] = v2;
 		e1 = vertices[2].p - vertices[1].p;
 		e2 = vertices[0].p - vertices[2].p;
+
+		em1 = vertices[1].p - vertices[0].p;
+		em2 = vertices[2].p - vertices[0].p;
 
 		n = e1.cross(e2).normalize();
 		nPrime = e1.cross(e2);
@@ -124,20 +131,23 @@ public:
 	//finish muller trumbone, use smallewr epsilon
 	bool rayIntersect2(const Ray& r, float& t, float& u, float& v) const
 	{
-		Vec3 p = Cross(r.dir, e2);
-		float det = Dot(e1, p);
-		if (std::abs(det) < EPSILON)return false;
+		Vec3 p = Cross(r.dir, em2);
+		float det = Dot(em1, p);
+
+
+		if (std::abs(det) < M_EPSILON)return false;
+
 		float invdet = 1.0f / det;
 
 		Vec3 T = r.o - vertices[0].p;
 		u = Dot(T, p) * invdet;
 		if (u < 0.0f || u > 1.0f) { return false; }
 
-		Vec3 q = Cross(T, e1);
+		Vec3 q = Cross(T, em1);
 		v = Dot(r.dir, q) * invdet;
 		if (v < 0.0f || (u + v) > 1.0f) { return false; }
 
-		t = Dot(e2, q) * invdet;
+		t = Dot(em2, q) * invdet;
 
 		return t >= 0.0f;
 	}
@@ -274,6 +284,10 @@ struct Bin {
 std::unordered_map<Triangle*, int> triangleMap;
 int maxDepth = 0;
 
+int maxNodeTri = 0;
+int nodeAbove = 0;
+int maxCheckSize = 8;
+
 class BVHNode
 {
 public:
@@ -396,7 +410,7 @@ public:
 		float splitCost = findBestSplitPlane(axis, splitPos);
 		float noSplitCost = calculateNodeCost();
 
-		if (splitCost >= noSplitCost || axis == -1) return;
+		//if (splitCost >= noSplitCost || axis == -1) return;
 
 		std::vector<Triangle*> leftTriangles, rightTriangles;
 		for (Triangle* tri : triangles) {
@@ -408,8 +422,9 @@ public:
 			}
 		}
 
-		triangles.clear();
 		if (leftTriangles.empty() || rightTriangles.empty()) return;
+		
+		triangles.clear();
 
 		l = new BVHNode();
 		r = new BVHNode();
@@ -433,7 +448,7 @@ public:
 					intersection.t = t;
 					intersection.alpha = u;
 					intersection.beta = v;
-					intersection.gamma = 1.f - (u + v);
+					intersection.gamma = 1.0f - (u + v);
 					intersection.ID = triangleMap[tri];
 
 				}
@@ -443,19 +458,6 @@ public:
 
 		if (l) l->traverse(ray, InputTriangles, intersection);
 		if (r) r->traverse(ray, InputTriangles, intersection);
-	}
-
-	void checkTraverse()
-	{
-
-
-		if (l == nullptr && r == nullptr) {
-			if(triangles.size() > 1)
-			return;
-		}
-
-		if (l) l->checkTraverse();
-		if (r) r->checkTraverse();
 	}
 
 	IntersectionData traverse(const Ray& ray, const std::vector<Triangle>& triangles)
@@ -539,5 +541,28 @@ public:
 			//std::cout << indent << "Right child:\n";
 			r->print2(depth + 1);
 		}
+	}
+
+
+	void printStat() {
+		std::cout << "maxdepth: " << maxD() << "\n";
+		std::cout << "Max triangles in a node: " << maxNodeTri << "\n";
+		std::cout << "Number of nodes with more than " << maxCheckSize << " triangles: " << nodeAbove << "\n";
+	}
+
+	void checkTraverse()
+	{
+		if (l == nullptr && r == nullptr) {
+			if (triangles.size() > 1) {
+				maxNodeTri = std::max(maxNodeTri, (int)triangles.size());
+			}
+			if (triangles.size() > maxCheckSize) {
+				nodeAbove++;
+			}
+			return;
+		}
+
+		if (l) l->checkTraverse();
+		if (r) r->checkTraverse();
 	}
 };

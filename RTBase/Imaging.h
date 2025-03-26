@@ -140,7 +140,7 @@ class BoxFilter : public ImageFilter
 public:
 	float filter(float x, float y) const
 	{
-		if (fabsf(x) <= 0.5f && fabs(y) <= 0.5f)
+		if (fabsf(x) <= 1.0f && fabs(y) <= 1.0f)
 		{
 			return 1.0f;
 		}

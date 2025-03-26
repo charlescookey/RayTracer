@@ -53,7 +53,7 @@ namespace RTTest
 
 			tri.rayIntersect(r, t, u, v);
 
-			std::string test = "t = " + std::to_string(t) + " u = " + std::to_string(u) + " v = " + std::to_string(v);
+			std::string test = "t = " + std::to_string(t) + " u = " + std::to_string(u) + " v = " + std::to_string(v) + "\n";
 			Logger::WriteMessage(test.c_str());
 
 			float t2;

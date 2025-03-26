@@ -170,13 +170,11 @@ public:
 			{
 				return direct;
 			}
-			Colour bsdf;
+			Colour indirect;
 			float pdf;
-			Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
-			pdf = SamplingDistributions::cosineHemispherePDF(wi);
-			wi = shadingData.frame.toWorld(wi);
-			bsdf = shadingData.bsdf->evaluate(shadingData, wi);
-			pathThroughput = pathThroughput * bsdf * fabsf(Dot(wi, shadingData.sNormal)) / pdf;
+			//Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
+			Vec3 wi = shadingData.bsdf->sample(shadingData, sampler, indirect, pdf);
+			pathThroughput = pathThroughput * indirect * fabsf(Dot(wi, shadingData.sNormal)) / pdf;
 			r.init(shadingData.x + (wi * EPSILON), wi);
 			return (direct + pathTrace(r, pathThroughput, depth + 1, sampler, shadingData.bsdf->isPureSpecular()));
 		}
@@ -288,10 +286,10 @@ public:
 				float px = x + 0.5f;
 				float py = y + 0.5f;
 				Ray ray = scene->camera.generateRay(px, py);
-				//Colour col = viewNormals(ray);
+				Colour col = viewNormals(ray);
 				//Colour col = albedo(ray);
 				//Colour col = direct(ray, samplers);
-				Colour col = pathTrace(px,py, samplers);
+				//Colour col = pathTrace(px,py, samplers);
 				film->splat(px, py, col);
 				unsigned char r = (unsigned char)(col.r * 255);
 				unsigned char g = (unsigned char)(col.g * 255);
@@ -318,4 +316,111 @@ public:
 	{
 		stbi_write_png(filename.c_str(), canvas->getWidth(), canvas->getHeight(), 3, canvas->getBackBuffer(), canvas->getWidth() * 3);
 	}
+
+
+
+	void connectToCamera(Vec3 p, Vec3 n, Colour col) {
+		float x;
+		float y;
+		if (!scene->camera.projectOntoCamera(p, x, y)) {
+			return;
+		}
+
+		Vec3 cameraDir = scene->camera.origin - p;
+		cameraDir = cameraDir.normalize();
+
+
+		float costheta = Dot(scene->camera.viewDirection, cameraDir);
+
+		if (costheta <= 0) {
+			return;
+		}
+
+
+		float we = 1.f / (scene->camera.Afilm * std::pow(costheta, 4));
+
+		Colour contrib = col * we;
+		
+		film->splat(x, y, contrib);
+	};
+
+	void lightTrace(Sampler* sampler) {
+		float pmf;
+		float pdfPosition;
+		float pdfDirection;
+		Light* light = scene->sampleLight(sampler, pmf);
+
+
+		if (light->isArea())
+		{
+			Vec3 p = light->samplePositionFromLight(sampler, pdfPosition);
+			Vec3 wi = light->sampleDirectionFromLight(sampler, pdfDirection);
+
+
+			ShadingData shadingData;
+
+			Colour Le = light->evaluate(shadingData, -wi) / pdfPosition;
+
+			connectToCamera(p, wi, Le);
+
+
+
+			Ray ray;
+			ray.init(p, wi);
+
+			Colour pathThroughput(1.0f, 1.0f, 1.0f);///CORRECT THIS LATER
+
+			lightTracePath(ray, pathThroughput, Le, sampler);
+			
+		}
+	};
+	void lightTracePath(Ray& r, Colour pathThroughput, Colour Le, Sampler* sampler) {
+		IntersectionData intersection = scene->traverse(r);
+		ShadingData shadingData = scene->calculateShadingData(intersection, r);
+
+		if (shadingData.t < FLT_MAX)
+		{
+			Vec3 wi = scene->camera.origin - shadingData.x;
+			wi = wi.normalize();
+			Colour col = pathThroughput * shadingData.bsdf->evaluate(shadingData, wi) * Le;
+
+			connectToCamera(shadingData.x, wi, col);
+
+			if (shadingData.bsdf->isLight())
+			{
+				return;
+			}
+			int depth = 0; ///CORRECT THIS LATER
+			if (depth > MAX_DEPTH)
+			{
+				return ;
+			}
+
+
+			float russianRouletteProbability = min(pathThroughput.Lum(), 0.9f);
+			if (sampler->next() < russianRouletteProbability)
+			{
+				pathThroughput = pathThroughput / russianRouletteProbability;
+			}
+			else
+			{
+				return ;
+			}
+
+			Colour bsdf;
+			float pdf;
+			Vec3 newWi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
+			pdf = SamplingDistributions::cosineHemispherePDF(wi);
+			newWi = shadingData.frame.toWorld(newWi);
+
+
+			bsdf = shadingData.bsdf->evaluate(shadingData, newWi);
+			pathThroughput = pathThroughput * bsdf * fabsf(Dot(newWi, shadingData.sNormal)) / pdf;
+			
+			
+			Ray newRay;
+			newRay.init(shadingData.x + (newWi * EPSILON), newWi);
+			lightTracePath(newRay, pathThroughput, Le, sampler);
+		}
+	};
 };

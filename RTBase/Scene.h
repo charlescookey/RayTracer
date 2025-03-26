@@ -95,8 +95,9 @@ public:
 			bvh = new BVHNode();
 			bvh->build(triangles);
 			bvh->print2();
+			bvh->checkTraverse();
 			std::cout << "number of triangle: " << triangles.size() << "\n";
-			std::cout << "maxdepth: " << bvh->maxD() << "\n";
+			bvh->printStat();
 		}
 
 		// Do not touch the code below this line!

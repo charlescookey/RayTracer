@@ -4,6 +4,9 @@
 #include "Imaging.h"
 #include "Sampling.h"
 
+#include <algorithm>
+
+
 #pragma warning( disable : 4244)
 
 class BSDF;
@@ -36,27 +39,136 @@ public:
 	static float fresnelDielectric(float cosTheta, float iorInt, float iorExt)
 	{
 		// Add code here
-		return 1.0f;
+		//return 1.0f;
+		cosTheta = HelperFunctions::clamp(cosTheta, -1.0f, 1.0f);
+
+		//if light is coming from inside the object
+		bool entering = cosTheta > 0.f;
+		if (entering)
+		{
+			std::swap(iorInt, iorExt);
+			cosTheta = std::fabs(cosTheta);
+		}
+		float refractionIndex = iorExt / iorInt;
+
+
+		float cosThetaI = cosTheta;
+		float sinThetaI = sqrtf(std::max(0.0f, 1 - powf(cosThetaI, 2)));
+
+		float sinThetaT = refractionIndex * sinThetaI;
+		if (sinThetaT >= 1.f)return 1.f;
+		float cosThetaT = sqrtf(std::max(0.0f, 1 - powf(sinThetaT, 2)));
+
+		float FwParallel = (cosThetaI - (refractionIndex * cosThetaT)) / (cosThetaI + (refractionIndex * cosThetaT));
+		float FwPerpendicular = ((cosThetaI * refractionIndex) - cosThetaT) / ((cosThetaI *refractionIndex) + cosThetaT);
+
+		return 0.5f * (SQ(FwParallel) + SQ(FwPerpendicular, 2));		
 	}
 	static Colour fresnelConductor(float cosTheta, Colour ior, Colour k)
 	{
 		// Add code here
-		return Colour(1.0f, 1.0f, 1.0f);
+		//return Colour(1.0f, 1.0f, 1.0f);
+
+		//cosTheta = clamp(cosTheta, -1.0f, 1.0f);
+		cosTheta = std::fabs(cosTheta);
+		float cosSquaredTheta = powf(cosTheta, 2);
+		float sinSquaredTheta =  1 - cosSquaredTheta;
+
+		Colour cos2Theta = Colour(cosSquaredTheta, cosSquaredTheta, cosSquaredTheta);
+		Colour sin2Theta = Colour(sinSquaredTheta, sinSquaredTheta, sinSquaredTheta);
+
+		Colour iorSquared = ior * ior;
+		Colour kSquared = k * k;
+
+		Colour nk2 = iorSquared + kSquared;
+		Colour TwoNCos = ior * cosTheta * 2;
+
+		Colour FwParallel = ((nk2 * cosSquaredTheta) - TwoNCos + sin2Theta) / ((nk2 * cosSquaredTheta) + TwoNCos + sin2Theta);
+		Colour FwPerpendicular = (nk2  - TwoNCos + cos2Theta) / (nk2 + TwoNCos + cos2Theta);
+
+		return (FwParallel + FwPerpendicular) * 0.5f;
 	}
+
+	//using trowbridge-reitz distribution
 	static float lambdaGGX(Vec3 wi, float alpha)
 	{
 		// Add code here
-		return 1.0f;
+		//return 1.0f;
+		float AbsTanTheta = std::abs(ShadingHelper::TanTheta(wi));
+		float alpha2Tans2Theta = (alpha * AbsTanTheta) * (alpha * AbsTanTheta);
+
+		return (-1 + sqrtf(1 + alpha2Tans2Theta)) * 0.5f;
 	}
 	static float Gggx(Vec3 wi, Vec3 wo, float alpha)
 	{
 		// Add code here
-		return 1.0f;
+		//return 1.0f;
+
+		return 1.0f / (1.0f + lambdaGGX(wi, alpha) + lambdaGGX(wo, alpha));
 	}
 	static float Dggx(Vec3 h, float alpha)
 	{
 		// Add code here
-		return 1.0f;
+		//return 1.0f;
+		float cosSquaredTheta = ShadingHelper::Cos2Theta(h);
+		float alphaSquared = powf(alpha, 2);	
+		float denominator =(cosSquaredTheta * (alphaSquared - 1)) + 1;
+		return alphaSquared / (denominator * denominator * M_PI);
+	}
+
+	static void setIOR(float cosTheta , float& iorI , float& iorT, float intIOR , float extIOR) {
+		bool entering = cosTheta > 0;
+
+		iorI = entering ? extIOR : intIOR;
+		iorT = entering ? intIOR : extIOR;
+		cosTheta = std::fabs(cosTheta);
+	}
+
+	static float CosTheta(Vec3 wi)
+	{
+		return wi.z;
+	}
+
+	static float Cos2Theta(Vec3 wi)
+	{
+		return wi.z * wi.z;
+	}
+
+	static float AbsCosTheta(Vec3 wi)
+	{
+		return std::fabs(wi.z);
+	}
+
+	static float Sin2Theta(Vec3 wi)
+	{
+		return std::max(0.0f, 1 - Cos2Theta(wi));
+	}
+
+	static float SinTheta(Vec3 wi)
+	{
+		return sqrtf(Sin2Theta(wi));
+	}
+
+	static float TanTheta(Vec3 wi)
+	{
+		return SinTheta(wi) / CosTheta(wi);
+	}
+
+	static float Tan2Theta(Vec3 wi)
+	{
+		return Sin2Theta(wi) / Cos2Theta(wi);
+	}
+	
+	static float CosPhi(Vec3 wi)
+	{
+		float sinTheta = SinTheta(wi);
+		return (sinTheta == 0) ? 1.f : HelperFunctions::clamp(wi.x / sinTheta, -1.f, 1.f);
+	}
+	
+	static float SinPhi(Vec3 wi)
+	{
+		float sinTheta = SinTheta(wi);
+		return (sinTheta == 0) ? 0.f : HelperFunctions::clamp(wi.y / sinTheta, -1.f, 1.f);
 	}
 };
 

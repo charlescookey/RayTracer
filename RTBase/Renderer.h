@@ -248,6 +248,7 @@ public:
 		}
 		return scene->background->evaluate( r.dir);
 	}
+	
 	Colour direct(Ray& r, Sampler* sampler)
 	{
 		IntersectionData intersection = scene->traverse(r);
@@ -316,12 +317,51 @@ public:
 		}
 	}
 
-	void render()
+	void renderSTLight()
 	{
 		film->incrementSPP();
 
-		int tilesX = (film->width + tileSize - 1) / tileSize;
-		int tilesY = (film->height + tileSize - 1) / tileSize;
+		for (unsigned int y = 0; y < film->height; y++)
+		{
+			for (unsigned int x = 0; x < film->width; x++)
+			{
+				lightTrace(samplers);
+			}
+		}
+
+		for (unsigned int y = 0; y < film->height; y++)
+		{
+			for (unsigned int x = 0; x < film->width; x++)
+			{
+				unsigned char r;
+				unsigned char g;
+				unsigned char b;
+				film->tonemap(x, y, r, g, b);
+
+				canvas->draw(x, y, r, g, b);
+			}
+		}
+	}
+
+	void renderSTMLT()
+	{
+		film->incrementSPP();
+
+		PSSMLTRender(100000);
+
+		for (unsigned int y = 0; y < film->height; y++)
+		{
+			for (unsigned int x = 0; x < film->width; x++)
+			{
+				unsigned char r;
+				unsigned char g;
+				unsigned char b;
+				film->tonemap(x, y, r, g, b);
+				canvas->draw(x, y, r, g, b);
+			}
+		}
+	}
+
 	int type = 2;
 	
 	void render(){
@@ -441,19 +481,21 @@ public:
 				float px = x + 0.5f;
 				float py = y + 0.5f;
 				Ray ray = scene->camera.generateRay(px, py);
-				Colour col = viewNormals(ray);
+				//Colour col = viewNormals(ray);
 				//Colour col = albedo(ray);
 				//Colour col = direct(ray, samplers);
+
+
 				//Colour col = pathTrace(px,py, samplers);
 				Colour col = pathTraceRad(px, py, samplers);
 
 				film->splat(px, py, col);
-				unsigned char r = (unsigned char)(col.r * 255);
-				unsigned char g = (unsigned char)(col.g * 255);
-				unsigned char b = (unsigned char)(col.b * 255);
-				//unsigned char r;
-				//unsigned char g;
-				//unsigned char b;
+				//unsigned char r = (unsigned char)(col.r * 255);
+				//unsigned char g = (unsigned char)(col.g * 255);
+				//unsigned char b = (unsigned char)(col.b * 255);
+				unsigned char r;
+				unsigned char g;
+				unsigned char b;
 				film->tonemap(x, y, r, g, b);
 				canvas->draw(x, y, r, g, b);
 			}
@@ -541,25 +583,26 @@ public:
 	{
 		return film->SPP;
 	}
+	
 	void saveHDR(std::string filename)
 	{
 		film->save(filename);
 	}
+	
 	void savePNG(std::string filename)
 	{
 		stbi_write_png(filename.c_str(), canvas->getWidth(), canvas->getHeight(), 3, canvas->getBackBuffer(), canvas->getWidth() * 3);
 	}
 
 
-
 	void connectToCamera(Vec3 p, Vec3 n, Colour col) {
 		float x;
 		float y;
-		if (!scene->camera.projectOntoCamera(p, x, y)) {
+		if (!scene->camera.projectOntoCamera(p, x, y) || !scene->visible(p , scene->camera.origin)) {
 			return;
 		}
 
-		Vec3 cameraDir = scene->camera.origin - p;
+		Vec3 cameraDir = p - scene->camera.origin;// -p;
 		cameraDir = cameraDir.normalize();
 
 
@@ -584,30 +627,26 @@ public:
 		Light* light = scene->sampleLight(sampler, pmf);
 
 
-		if (light->isArea())
+		//if (light->isArea())
 		{
 			Vec3 p = light->samplePositionFromLight(sampler, pdfPosition);
 			Vec3 wi = light->sampleDirectionFromLight(sampler, pdfDirection);
 
-
-			ShadingData shadingData;
-
-			Colour Le = light->evaluate(shadingData, -wi) / pdfPosition;
+			Colour Le = light->evaluate(- wi) / pdfPosition;
 
 			connectToCamera(p, wi, Le);
-
-
 
 			Ray ray;
 			ray.init(p, wi);
 
 			Colour pathThroughput(1.0f, 1.0f, 1.0f);///CORRECT THIS LATER
 
-			lightTracePath(ray, pathThroughput, Le, sampler);
+			lightTracePath(ray, pathThroughput, Le, sampler, 0);
 			
 		}
 	};
-	void lightTracePath(Ray& r, Colour pathThroughput, Colour Le, Sampler* sampler) {
+	
+	void lightTracePath(Ray& r, Colour pathThroughput, Colour Le, Sampler* sampler, int depth) {
 		IntersectionData intersection = scene->traverse(r);
 		ShadingData shadingData = scene->calculateShadingData(intersection, r);
 
@@ -623,12 +662,11 @@ public:
 			{
 				return;
 			}
-			int depth = 0; ///CORRECT THIS LATER
+			//int depth = 0; ///CORRECT THIS LATER
 			if (depth > MAX_DEPTH)
 			{
-				return ;
+				return;
 			}
-
 
 			float russianRouletteProbability = min(pathThroughput.Lum(), 0.9f);
 			if (sampler->next() < russianRouletteProbability)
@@ -637,7 +675,7 @@ public:
 			}
 			else
 			{
-				return ;
+				return;
 			}
 
 			Colour bsdf;
@@ -646,14 +684,12 @@ public:
 			pdf = SamplingDistributions::cosineHemispherePDF(wi);
 			newWi = shadingData.frame.toWorld(newWi);
 
-
 			bsdf = shadingData.bsdf->evaluate(shadingData, newWi);
 			pathThroughput = pathThroughput * bsdf * fabsf(Dot(newWi, shadingData.sNormal)) / pdf;
 			
-			
 			Ray newRay;
 			newRay.init(shadingData.x + (newWi * EPSILON), newWi);
-			lightTracePath(newRay, pathThroughput, Le, sampler);
+			lightTracePath(newRay, pathThroughput, Le, sampler, depth+1);
 		}
 	};
 

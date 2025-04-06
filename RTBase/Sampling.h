@@ -34,6 +34,106 @@ public:
 		return dist(generator);
 	}
 };
+//1/64
+#define PSSs1 0.015625f 
+//1/1024
+#define PSSs2 0.0009765625f
+
+class PSS {
+public:
+	std::vector<float> pssCoords;
+	std::vector<float> pssTimer;
+	MTRandom random;
+
+	int currentIndex;
+
+	PSS() : currentIndex(0) { }
+
+	void reset()
+	{
+		currentIndex = 0;
+		pssCoords.clear();
+		pssTimer.clear();
+	}
+
+	float next() {
+		if (currentIndex >= pssCoords.size()) {
+			pssCoords.push_back(random.next());
+			pssTimer.push_back(0);
+		}
+
+		return pssCoords[currentIndex++];
+	}
+
+	float mutate(float input)
+	{
+		float r1 = random.next();
+		float r2 = random.next();
+		float delta = PSSs1 * std::exp(-std::log(PSSs1 / PSSs2) * r1);
+
+		if (r2 < 0.5f)
+		{
+			delta = -delta;
+		}
+
+		return std::fmod(input + delta + 1.0f, 1.0f); // wrap around
+	}
+
+	void smallStepPerturb(int timer) {
+		for (int i = 0; i < pssCoords.size(); i++)
+		{
+			while (pssTimer[i] < timer)
+			{
+				pssCoords[i] = mutate(pssCoords[i]);
+				pssTimer[i]++;
+			}
+		}
+	}
+
+};
+
+class PSSSampler : public Sampler
+{
+public:
+	int currentTimer;
+	PSS currentState;
+	PSS proposedState;
+	MTRandom random;
+
+
+	PSSSampler(unsigned int seed = 1)
+	{
+		
+		currentTimer = 0;
+	}
+
+	void reset()
+	{
+		currentTimer = 0;
+	}
+
+	void largeStep()
+	{
+		currentTimer++;
+		proposedState.reset();
+	}
+
+	float nextPSSP() {
+		return proposedState.next();
+	}
+
+	float nextPSSC() {
+		return currentState.next();
+	}
+
+	float next() {
+		return random.next();
+	}
+
+	void smallStep() {
+		proposedState.smallStepPerturb(currentTimer);
+	}
+};
 
 const float RAdius = 1.f;
 // Note all of these distributions assume z-up coordinate system

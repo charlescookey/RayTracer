@@ -849,4 +849,101 @@ public:
 	}
 
 
+	float calculateAcceptance(Colour current, Colour proposed) {
+		float currentLum = current.Lum();
+		float proposedLum = proposed.Lum();
+
+		if (currentLum <= 0.0f)return 1.0f;
+		if (proposedLum <= 0.0f)return 0.0f;
+
+		return (std::min)(1.0f, proposedLum / currentLum);
+	}
+
+	int M = 100;
+
+	Colour genPathC(PSSSampler* sampler, float&x , float&y) {
+
+		x = sampler->nextPSSC() * film->width;
+		y = sampler->nextPSSC() * film->height;
+
+		return pathTrace(x, y, sampler);
+	}
+
+	Colour genPathP(PSSSampler* sampler, float& x, float& y) {
+		x = sampler->nextPSSP() * film->width;
+		y = sampler->nextPSSP() * film->height;
+
+		return pathTrace(x, y, sampler);
+	}
+
+	float getNormalization(PSSSampler* sampler) {
+		float b = 0.0f;
+		for (int i = 0; i < M; i++) {
+			float x = sampler->next() * film->width;
+			float y = sampler->next() * film->height;
+			Colour currentValue = pathTrace(x, y, sampler);
+			b += currentValue.Lum();
+		}
+		b /= M;
+		if (b <= 0.0f) b = 1.0f;
+		return b;
+	}
+
+	PSSSampler *pssSampler = nullptr;
+
+	float largeStepProb = 0.3f;
+
+	void PSSMLTRender(int numSamples) {
+		if (pssSampler == nullptr) {
+			pssSampler = new PSSSampler();
+		}
+
+		float b = getNormalization(pssSampler);
+		float proposedX, proposedY;
+		float currentX, currentY;
+
+		Colour currentValue = genPathC(pssSampler , currentX , currentY);
+
+		for (int i = 0; i < numSamples; i++)
+		{
+
+			bool largeStep = pssSampler->next() < largeStepProb;
+			if (largeStep) {
+				// Perform a small step perturbation
+				pssSampler->largeStep();
+			}
+			else {
+				pssSampler->smallStep();
+			}
+			
+			Colour proposed = genPathP(pssSampler , proposedX , proposedY);
+			
+			float a = calculateAcceptance(currentValue, proposed);
+
+			if (largeStep) {
+				film->splat(proposedX, proposedY, proposed * a / (b + largeStepProb * proposed.Lum()));
+				film->splat(currentX, currentY, currentValue * (1.0f - a) / b );
+			}
+			else {
+				film->splat(proposedX, proposedY, proposed * a / b );
+				film->splat(currentX, currentY, currentValue * (1.0f - a) / b);
+			}
+
+
+			//Colour currentContrib = currentValue * (1.0f - a) * b / currentValue.Lum();
+			//Colour proposedContrib = proposed * a * b / proposed.Lum();
+
+			if (pssSampler->next() < a) {
+				//pssSampler->currentState = pssSampler->proposedState;
+				//film->splat(proposedX, proposedY, proposedContrib);
+				currentValue = proposed;
+				currentX = proposedX;
+				currentY = proposedY;
+			}
+			//film->splat(currentX, currentY, currentContrib);
+		}
+
+	}
+
+	
 };

@@ -3,6 +3,7 @@
 #include "Core.h"
 #include <random>
 #include <algorithm>
+#include <memory>
 
 class Sampler
 {
@@ -10,6 +11,13 @@ public:
 	virtual float next() = 0;
 };
 
+namespace HelperFunctions
+{
+	template<typename T>
+	T clamp(T num, T low, T high) {
+		return std::max(low, std::min(num, high));
+	}
+};
 
 //onr per thread, seed diuff for diff thread, one mark
 class MTRandom : public Sampler

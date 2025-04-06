@@ -22,10 +22,11 @@ int main(int argc, char* argv[])
 	//std::string sceneName = "veach-mis";
 	//std::string sceneName = "dining-room";
 	//std::string sceneName = "living-room";
+	std::string sceneName = "MaterialsScene1";
 	//std::string sceneName = "bathroom";
 	//std::string sceneName = "kitchen";
-	std::string sceneName = "coffee";
-	std::string filename = "GI.hdr";
+	//std::string sceneName = "coffee";
+	std::string filename = "GI2.hdr";
 	unsigned int SPP = 8192;
 
 	if (argc > 1)

@@ -112,8 +112,6 @@ public:
 		return true;
 	}
 
-	//use moller-trumbone in here
-
 	bool rayIntersect(const Ray& r, float& t, float& u, float& v) const
 	{
 		float denom = Dot(n, r.dir);
@@ -128,6 +126,7 @@ public:
 		if (v < 0 || (u + v) > 1.0f) { return false; }
 		return true;
 	}
+
 	//finish muller trumbone, use smallewr epsilon
 	bool rayIntersect2(const Ray& r, float& t, float& u, float& v) const
 	{
@@ -272,7 +271,7 @@ struct IntersectionData
 #define BINS_COUNT 8
 
 const float C_bounds = 1.0f; // Cost of traversing a node
-const float C_isect = 1.5f;  // Cost of a ray-triangle intersection
+const float C_isect = 1.0f;  // Cost of a ray-triangle intersection
 
 
 struct Bin {

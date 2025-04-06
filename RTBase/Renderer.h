@@ -11,6 +11,8 @@
 #include <thread>
 #include <functional>
 
+#include "OpenImageDenoise/oidn.hpp"
+
 #define tileSize 16
 #define threadNum 12
 #define MAX_DEPTH 4
@@ -33,6 +35,23 @@ public:
 	MTRandom* samplers;
 	std::thread** threads;
 	int numProcs;
+
+
+	//Denoiser
+	oidn::DeviceRef device;
+
+	//Buffers
+	oidn::BufferRef colourBuf;
+	oidn::BufferRef albedoBuf;
+	oidn::BufferRef normalBuf;
+
+	//Filter
+	oidn::FilterRef filter;
+
+	Film* albedoFilm;
+	Film* normalFilm;
+
+
 	void init(Scene* _scene, GamesEngineeringBase::Window* _canvas)
 	{
 		scene = _scene;
@@ -44,7 +63,40 @@ public:
 		numProcs = sysInfo.dwNumberOfProcessors;
 		threads = new std::thread * [numProcs];
 		samplers = new MTRandom[numProcs];
+
 		traceVPLs(samplers, 50);
+
+
+
+		//denoiser
+		device = oidn::newDevice();
+		//device = oidn::newDevice(oidn::DeviceType::CPU);
+		device.commit();
+
+		const char* errorMessage;
+		if (device.getError(errorMessage) != oidn::Error::None)
+			std::cout << "Error: " << errorMessage << std::endl;
+
+		colourBuf = device.newBuffer(film->width * film->height * 3 * sizeof(float));
+		albedoBuf = device.newBuffer(film->width * film->height * 3 * sizeof(float));
+		normalBuf = device.newBuffer(film->width * film->height * 3 * sizeof(float));
+
+		//Expensive operatoiom, add print message 
+		filter = device.newFilter("RT");
+
+		filter.setImage("color", colourBuf, oidn::Format::Float3, film->width, film->height); // beauty
+		filter.setImage("albedo", albedoBuf, oidn::Format::Float3, film->width, film->height); // auxiliary
+		filter.setImage("normal", normalBuf, oidn::Format::Float3, film->width, film->height); // auxiliary
+		filter.setImage("output", colourBuf, oidn::Format::Float3, film->width, film->height); // denoised beauty
+		filter.set("hdr", true); // beauty image is HDR
+		filter.commit();
+
+		albedoFilm = new Film();
+		albedoFilm->init((unsigned int)scene->camera.width, (unsigned int)scene->camera.height, new BoxFilter());
+
+		normalFilm = new Film();
+		normalFilm->init((unsigned int)scene->camera.width, (unsigned int)scene->camera.height, new BoxFilter());
+
 		clear();
 	}
 	void clear()
@@ -142,6 +194,7 @@ public:
 		}
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
+	
 	Colour pathTrace(float px, float py, Sampler* sampler) {
 		Colour pathThroughput(1.0f, 1.0f, 1.0f);
 		Ray ray = scene->camera.generateRay(px + sampler->next(), py+sampler->next());
@@ -323,6 +376,28 @@ public:
 			thread.join();
 		}
 	}
+
+	void renderMTAndDenoise()
+	{
+		film->incrementSPP();
+
+		//there is a bug here, inn canvas draw,int index = ((y * width) + x) * 3; so we use y as width
+
+		int tilesY = (film->width + tileSize - 1) / tileSize;
+		int tilesX = (film->height + tileSize - 1) / tileSize;
+
+		int totalTiles = tilesX * tilesY;
+
+		std::atomic<int> tileNum(0);
+		std::vector<std::thread> threads;
+
+		auto threadFunc = [&]() {
+			unsigned long i;
+			while ((i = tileNum.fetch_add(1)) < totalTiles) {
+				int tileX = i / tilesX;
+				int tileY = i % tilesX;
+
+				getTileFilms(tileX, tileY, film->width, film->height, scene, canvas);
 			}
 			};
 
@@ -334,7 +409,24 @@ public:
 			thread.join();
 		}
 
+		//Denoise
+		denoise();
+
+
+		for (unsigned int y = 0; y < film->height; y++)
+		{
+			for (unsigned int x = 0; x < film->width; x++)
+			{
+				unsigned char r;
+				unsigned char g;
+				unsigned char b;
+				film->tonemap(x, y, r, g, b);
+				canvas->draw(x, y, r, g, b);
+			}
+		}
+
 	}
+	
 	void renderTile(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
 	{
 		int startX = tileX * tileSize;
@@ -369,6 +461,82 @@ public:
 
 		//canvas->present();
 	}
+
+	void getTileFilms(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
+	{
+		int startX = tileX * tileSize;
+		int startY = tileY * tileSize;
+		int endX = min(startX + tileSize, sizeX);
+		int endY = min(startY + tileSize, sizeY);
+
+		for (unsigned int y = startY; y < endY; y++)
+		{
+			for (unsigned int x = startX; x < endX; x++)
+			{
+				float px = x + 0.5f;
+				float py = y + 0.5f;
+				Ray ray = scene->camera.generateRay(px, py);
+
+
+				Colour col = viewNormals(ray);
+				normalFilm->splat(px, py, col);
+
+				col = albedo(ray);
+				albedoFilm->splat(px, py, col);
+
+				col = pathTrace(px, py, samplers);
+				film->splat(px, py, col);
+			}
+		}
+	}
+
+
+	void denoise()
+	{
+		int numPixels = film->width * film->height;
+		// Copy data to buffers
+
+		float* colourData = (float*)normalBuf.getData();
+
+		for (int i = 0; i < numPixels; i++)
+		{
+			colourData[i * 3 + 0] = normalFilm->film[i].r;
+			colourData[i * 3 + 1] = normalFilm->film[i].g;
+			colourData[i * 3 + 2] = normalFilm->film[i].b;
+		}
+
+		colourData = (float*)albedoBuf.getData();
+
+		for (int i = 0; i < numPixels; i++)
+		{
+			colourData[i * 3 + 0] = albedoFilm->film[i].r;
+			colourData[i * 3 + 1] = albedoFilm->film[i].g;
+			colourData[i * 3 + 2] = albedoFilm->film[i].b;
+		}
+
+		colourData = (float*)colourBuf.getData();
+
+		for (int i = 0; i < numPixels; i++)
+		{
+			colourData[i * 3 + 0] = film->film[i].r;
+			colourData[i * 3 + 1] = film->film[i].g;
+			colourData[i * 3 + 2] = film->film[i].b;
+		}
+
+		// Run the filter
+		filter.execute();
+
+		// Copy the denoised data back to the film
+
+		for (int i = 0; i < numPixels; i++)
+		{
+			film->film[i].r = colourData[i * 3 + 0];
+			film->film[i].g = colourData[i * 3 + 1];
+			film->film[i].b = colourData[i * 3 + 2];
+		}
+
+	}
+	
 	int getSPP()
 	{
 		return film->SPP;

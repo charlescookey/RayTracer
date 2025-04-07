@@ -192,3 +192,16 @@ public:
 		return 1.0f / 4 * M_PI;
 	}
 };
+
+struct Vec2 {
+	float x, y;
+	Vec2() : x(0), y(0) {}
+	Vec2(float x, float y) : x(x), y(y) {}
+
+	int operator[](int index) const
+	{
+		if (index == 0)
+			return x;
+		return y;
+	}
+};

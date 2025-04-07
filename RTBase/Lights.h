@@ -70,8 +70,14 @@ public:
 	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf)
 	{
 		// Add code to sample a direction from the light
-		Vec3 wi = Vec3(0, 0, 1);
-		pdf = 1.0f;
+		//Vec3 wi = Vec3(0, 0, 1);
+		//pdf = 1.0f;
+		//Frame frame;
+		//frame.fromVector(triangle->gNormal());
+		//return frame.toWorld(wi);
+
+		Vec3 wi = SamplingDistributions::cosineSampleHemisphere(sampler->next(), sampler->next());
+		pdf = SamplingDistributions::cosineHemispherePDF(wi);
 		Frame frame;
 		frame.fromVector(triangle->gNormal());
 		return frame.toWorld(wi);
@@ -133,17 +139,25 @@ class EnvironmentMap : public Light
 {
 public:
 	Texture* env;
+	std::vector<float> luminance;
+	int nu, nv; 
 	EnvironmentMap(Texture* _env)
 	{
 		env = _env;
+		nu = env->width;
+		nv = env->height;
+		luminance.resize(env->width * env->height);
+		build();
 	}
-	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
+
+	Vec3 sample2(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
 	{
-		// Assignment: Update this code to importance sampling lighting based on luminance of each pixel
+		 //Assignment: Update this code to importance sampling lighting based on luminance of each pixel
 		Vec3 wi = SamplingDistributions::uniformSampleSphere(sampler->next(), sampler->next());
 		pdf = SamplingDistributions::uniformSpherePDF(wi);
 		reflectedColour = evaluate(wi);
 		return wi;
+
 	}
 	Colour evaluate(const Vec3& wi)
 	{
@@ -153,10 +167,11 @@ public:
 		float v = acosf(wi.y) / M_PI;
 		return env->sample(u, v);
 	}
-	float PDF(const ShadingData& shadingData, const Vec3& wi)
+	float PDF2(const ShadingData& shadingData, const Vec3& wi)
 	{
 		// Assignment: Update this code to return the correct PDF of luminance weighted importance sampling
 		return SamplingDistributions::uniformSpherePDF(wi);
+
 	}
 	bool isArea()
 	{
@@ -187,6 +202,55 @@ public:
 	std::vector<float> luminance_cdf;
 	std::vector<float> marginal_cdf;
 	std::vector<std::vector<float>> conditional_cdf;
+	float funcInt;
+
+	void build() {
+		std::vector<float> func(nu * nv);
+		funcInt = 0.0f;
+		for (int v = 0; v < nv; ++v) {
+			float theta = (v + 0.5f) / nv * M_PI;
+			float sinTheta = sinf(theta);
+			for (int u = 0; u < nu; ++u) {
+				int idx = v * nu + u;
+				float lum = env->texels[idx].Lum();
+				func[idx] = lum * sinTheta;
+				funcInt += func[idx];
+			}
+		}
+
+
+		conditional_cdf.resize(nv);
+		for (int v = 0; v < nv; ++v) {
+			conditional_cdf[v].resize(nu);
+			float sum = 0.0f;
+			for (int u = 0; u < nu; ++u) {
+				conditional_cdf[v][u] = func[v * nu + u];
+				sum += conditional_cdf[v][u];
+			}
+			
+			if (sum > 0.0f) {
+				for (int u = 0; u < nu; ++u) {
+					conditional_cdf[v][u] /= sum;
+				}
+			}
+		}
+
+		
+		marginal_cdf.resize(nv);
+		for (int v = 0; v < nv; ++v) {
+			float sum = 0.0f;
+			for (int u = 0; u < nu; ++u) {
+				sum += func[v * nu + u];
+			}
+			marginal_cdf[v] = sum;
+		}
+		
+		if (funcInt > 0.0f) {
+			for (int v = 0; v < nv; ++v) {
+				marginal_cdf[v] /= funcInt;
+			}
+		}
+	}
 
 
 	void buildDistributions() {
@@ -194,6 +258,7 @@ public:
 
 		int width = env->width;
 		int height = env->height;
+		funcInt = 0;
 
 		luminance_cdf.resize(width * height);
 		marginal_cdf.resize(height);
@@ -202,9 +267,11 @@ public:
 
 		std::vector<float> table(width * height);
 		for (int v = 0; v < height; v++) {
+			float st = sinf(((float)v + 0.5f / (float)height) * M_PI);
 			for (int u = 0; u < width; u++) {
 				int idx = v * width + u;
-				table[idx] = env->texels[idx].Lum();
+				table[idx] = env->texels[idx].Lum() * st;
+				funcInt += table[idx];
 			}
 		}
 
@@ -234,114 +301,29 @@ public:
 				}
 			}
 		}
-
-		float cumulative = 0.0f;
-		for (int i = 0; i < width * height; i++) {
-			cumulative += table[i] / total_sum;
-			luminance_cdf[i] = cumulative;
-		}
 	}
 
-	Vec3 sampleImportance(Sampler* sampler, float& pdf) {
-		float xi = sampler->next();
-		float yi = sampler->next();
-
-		int v = 0;
-		while (v < env->height - 1 && marginal_cdf[v] < yi) {
-			v++;
-		}
-
-		int u = 0;
-		while (u < env->width - 1 && conditional_cdf[v][u] < xi) {
-			u++;
-		}
-
-		float u0 = (float)u / (float)env->width;
-		float v0 = (float)v / (float)env->height;
-		float u1 = (float)(u + 1) / (float)env->width;
-		float v1 = (float)(v + 1) / (float)env->height;
-
-		float u_ = u0 + (u1 - u0) * sampler->next();
-		float v_ = v0 + (v1 - v0) * sampler->next();
-
-		float pdf_u = 1.0f / env->width;
-		float pdf_v = 1.0f / env->height;
-
-		pdf = pdf_u * pdf_v;
-
-		//return env->sample(u_, v_);
-		return Vec3();
-	}
-
-	std::vector<float> cdf; // Cumulative distribution function for importance sampling
-	float totalLuminance;
-	void buildCDF() {
-		int numPixels = env->width * env->height;
-		cdf.resize(numPixels + 1);
-		totalLuminance = 0.0f;
-
-		for (int y = 0; y < env->height; ++y) {
-			for (int x = 0; x < env->width; ++x) {
-				int idx = y * env->width + x;
-				float luminance = env->texels[idx].Lum();
-
-				// Weight by sin(theta) to account for spherical projection
-				float theta = M_PI * (y + 0.5f) / env->height;
-				float sinTheta = std::sin(theta);
-				totalLuminance += luminance * sinTheta;
-				cdf[idx + 1] = totalLuminance;
+	float Sample1D(std::vector<float>& dist, float u, float* pdf, int* offset)
+	{
+		float cdf = 0.0f;
+		int index = 0;
+		for (int i = 0; i < dist.size(); i++)
+		{
+			cdf += dist[i];
+			if (u <= cdf)
+			{
+				index = i;
+				break;
 			}
 		}
-		// Normalize CDF
-		for (int i = 1; i <= numPixels; ++i) {
-			cdf[i] /= totalLuminance;
-		}
+		index = std::min(index, (int)dist.size() - 1);
+		if (offset) *offset = index;
+		if (pdf) *pdf = dist[index] / dist.size();
+
+		float t = (u - (cdf - dist[index])) / dist[index];
+		return (index + t) / (float)dist.size();
 	}
 
-	Vec3 sample2(const ShadingData & shadingData, Sampler * sampler, Colour & reflectedColour, float& pdf)
-	{
-		// Importance sampling based on luminance
-		float r = sampler->next(); // Random number [0, 1]
-		int idx = std::lower_bound(cdf.begin(), cdf.end(), r) - cdf.begin() - 1;
-		int y = idx / env->width;
-		int x = idx % env->width;
-
-		// Convert pixel coordinates to spherical coordinates
-		float u = (x + sampler->next()) / env->width;  // Add jittering
-		float v = (y + sampler->next()) / env->height; // Add jittering
-		float theta = v * M_PI;
-		float phi = u * 2.0f * M_PI;
-
-		// Convert to Cartesian direction
-		float sinTheta = std::sin(theta);
-		Vec3 wi(
-			sinTheta * std::cos(phi),
-			sinTheta * std::sin(phi),
-			std::cos(theta)
-		);
-
-		// Evaluate radiance and compute PDF
-		reflectedColour = evaluate(shadingData, wi);
-		float luminance = 0.2126f * reflectedColour.r + 0.7152f * reflectedColour.g + 0.0722f * reflectedColour.b;
-		pdf = (luminance * sinTheta) / totalLuminance;
-
-		return wi;
-	}
-
-	Colour evaluate2(const ShadingData& shadingData, const Vec3& wi)
-	{
-		// Convert direction to UV coordinates in latitude-longitude format
-		float theta = std::acos(wi.z);
-		float phi = std::atan2(wi.y, wi.x);
-		if (phi < 0) phi += 2.0f * M_PI;
-		float u = phi / (2.0f * M_PI);
-		float v = theta / M_PI;
-
-		// Bilinear interpolation (simplified here, could be expanded)
-		int x = std::min(static_cast<int>(u * env->width), env->width - 1);
-		int y = std::min(static_cast<int>(v * env->height), env->height - 1);
-		return env->texels[y * env->width + x];
-	}
 	Vec3 samplePositionFromLight(Sampler* sampler, float& pdf)
 	{
 		// Samples a point on the bounding sphere of the scene. Feel free to improve this.
@@ -351,11 +333,94 @@ public:
 		pdf = 1.0f / (4 * M_PI * SQ(use<SceneBounds>().sceneRadius));
 		return p;
 	}
-	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf)
+	
+	Vec3 sampleDirectionFromLight2(Sampler* sampler, float& pdf)
 	{
 		// Replace this tabulated sampling of environment maps
 		Vec3 wi = SamplingDistributions::uniformSampleSphere(sampler->next(), sampler->next());
 		pdf = SamplingDistributions::uniformSpherePDF(wi);
 		return wi;
+
+
+	}
+
+	Vec2 SampleContinuous(float u0, float u1, float* pdf)  {
+		float pdfs[2];
+		int v;
+		// Sample v from the marginal distribution
+		float d1 = Sample1D(marginal_cdf, u1, &pdfs[1], &v);
+		// Sample u from the conditional distribution
+		float d0 = Sample1D(conditional_cdf[v], u0, &pdfs[0], nullptr);
+		*pdf = pdfs[0] * pdfs[1];
+		return Vec2(d0, d1);
+	}
+
+	// Compute the PDF at a given (u, v)
+	float PdfUV(const Vec2& p) const {
+		int iu = HelperFunctions::clamp(static_cast<int>(p[0] * nu), 0, nu - 1);
+		int iv = HelperFunctions::clamp(static_cast<int>(p[1] * nv), 0, nv - 1);
+		return (conditional_cdf[iv][iu] * nu * nv) / funcInt;
+	}
+
+	// Convert (u, v) to a direction vector
+	Vec3 UVToDirection(float u, float v) const {
+		float theta = v * M_PI;
+		float phi = u * 2.0f * M_PI;
+		float sinTheta = sinf(theta);
+		float cosTheta = cosf(theta);
+		float sinPhi = sinf(phi);
+		float cosPhi = cosf(phi);
+		return Vec3(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
+	}
+
+	// Convert direction to (u, v)
+	Vec2 DirectionToUV(const Vec3& wi) const {
+		float u = atan2f(wi.z, wi.x);
+		u = (u < 0.0f) ? u + (2.0f * M_PI) : u;
+		u = u / (2.0f * M_PI);
+		float v = acosf(wi.y) / M_PI;
+		return Vec2(u, v);
+	}
+
+	Vec3 sample(const ShadingData& shadingData, Sampler* sampler, Colour& reflectedColour, float& pdf)
+	{
+		// Sample (u, v) using the 2D distribution
+		float u0 = sampler->next();
+		float u1 = sampler->next();
+		Vec2 uv = SampleContinuous(u0, u1, &pdf);
+		// Convert (u, v) to a direction
+		Vec3 wi = UVToDirection(uv[0], uv[1]);
+		// Adjust the PDF for the change of variables to spherical coordinates
+		float theta = uv[1] * M_PI;
+		float sinTheta = sinf(theta);
+		pdf *= (2.0f * M_PI * M_PI) / sinTheta; // Jacobian factor
+		reflectedColour = evaluate(wi);
+		return wi;
+	}
+
+
+	float PDF(const ShadingData& shadingData, const Vec3& wi)
+	{
+		Vec2 uv = DirectionToUV(wi);
+		float pdfUV = PdfUV(uv);
+		float theta = uv[1] * M_PI;
+		float sinTheta = sinf(theta);
+		return pdfUV * (2.0f * M_PI * M_PI) / sinTheta;
+	}
+
+	Vec3 sampleDirectionFromLight(Sampler* sampler, float& pdf)
+	{
+		// Sample (u, v) using the 2D distribution
+		float u0 = sampler->next();
+		float u1 = sampler->next();
+		Vec2 uv = SampleContinuous(u0, u1, &pdf);
+		// Convert (u, v) to a direction
+		Vec3 wi = UVToDirection(uv[0], uv[1]);
+		// Adjust the PDF for the change of variables to spherical coordinates
+		float theta = uv[1] * M_PI;
+		float sinTheta = sinf(theta);
+		pdf *= (2.0f * M_PI * M_PI) / sinTheta;
+		return wi;
 	}
 };
+

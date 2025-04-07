@@ -557,6 +557,16 @@ public:
 		float p = atan2f(wi.y, wi.x);
 		return (p < 0.0f) ? p + (2.0f * M_PI) : p;
 	}
+
+	static Vec3 ConvertToDirection(float u, float v){
+		//Convert to Spherical coordinates
+		float theta = M_PI * v;//Pi * v
+		float phi = 2.0f * M_PI * u;//2Pi * u
+
+		//Convert to direction
+		float sinTheta = sinf(theta);
+		return Vec3(sinTheta * cosf(phi), cosf(theta), sinTheta * sinf(phi));
+	}
 };
 
 template<typename T>

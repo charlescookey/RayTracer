@@ -64,7 +64,7 @@ public:
 		threads = new std::thread * [numProcs];
 		samplers = new MTRandom[numProcs];
 
-		traceVPLs(samplers, 50);
+		//traceVPLs(samplers, 50);
 
 
 
@@ -362,7 +362,7 @@ public:
 		}
 	}
 
-	int type = 2;
+	int type = 4;
 	
 	void render(){
 		if (type == 0){
@@ -376,6 +376,9 @@ public:
 		}
 		else if (type == 3){
 			renderMTAndDenoise();//MT PathTrace + Denoise
+		}
+		else if (type == 4){
+			renderMTRadiosity();//Instant Radiosity
 		}
 		else
 		{
@@ -407,6 +410,39 @@ public:
 				renderTile(tileX, tileY, film->width, film->height, scene, canvas);
 			}
 		};
+
+		for (int i = 0; i < threadNum; i++) {
+			threads.emplace_back(threadFunc);
+		}
+
+		for (auto& thread : threads) {
+			thread.join();
+		}
+	}
+
+	void renderMTRadiosity()
+	{
+		film->incrementSPP();
+
+		//there is a bug here, inn canvas draw,int index = ((y * width) + x) * 3; so we use y as width
+
+		int tilesY = (film->width + tileSize - 1) / tileSize;
+		int tilesX = (film->height + tileSize - 1) / tileSize;
+
+		int totalTiles = tilesX * tilesY;
+
+		std::atomic<int> tileNum(0);
+		std::vector<std::thread> threads;
+
+		auto threadFunc = [&]() {
+			unsigned long i;
+			while ((i = tileNum.fetch_add(1)) < totalTiles) {
+				int tileX = i / tilesX;
+				int tileY = i % tilesX;
+
+				renderTileRad(tileX, tileY, film->width, film->height, scene, canvas);
+			}
+			};
 
 		for (int i = 0; i < threadNum; i++) {
 			threads.emplace_back(threadFunc);
@@ -481,18 +517,12 @@ public:
 				float px = x + 0.5f;
 				float py = y + 0.5f;
 				Ray ray = scene->camera.generateRay(px, py);
-				//Colour col = viewNormals(ray);
-				//Colour col = albedo(ray);
-				//Colour col = direct(ray, samplers);
 
 
-				//Colour col = pathTrace(px,py, samplers);
-				Colour col = pathTraceRad(px, py, samplers);
+
+				Colour col = pathTrace(px,py, samplers);
 
 				film->splat(px, py, col);
-				//unsigned char r = (unsigned char)(col.r * 255);
-				//unsigned char g = (unsigned char)(col.g * 255);
-				//unsigned char b = (unsigned char)(col.b * 255);
 				unsigned char r;
 				unsigned char g;
 				unsigned char b;
@@ -504,6 +534,33 @@ public:
 		//canvas->present();
 	}
 
+	void renderTileRad(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
+	{
+		int startX = tileX * tileSize;
+		int startY = tileY * tileSize;
+		int endX = min(startX + tileSize, sizeX);
+		int endY = min(startY + tileSize, sizeY);
+
+		for (unsigned int y = startY; y < endY; y++)
+		{
+			for (unsigned int x = startX; x < endX; x++)
+			{
+				float px = x + 0.5f;
+				float py = y + 0.5f;
+				Ray ray = scene->camera.generateRay(px, py);
+				Colour col = pathTraceRad(px, py, samplers);
+
+				film->splat(px, py, col);
+				unsigned char r;
+				unsigned char g;
+				unsigned char b;
+				film->tonemap(x, y, r, g, b);
+				canvas->draw(x, y, r, g, b);
+			}
+		}
+
+		//canvas->present();
+	}
 	void getTileFilms(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
 	{
 		int startX = tileX * tileSize;
@@ -751,7 +808,6 @@ public:
 
 			// Store a VPL at this intersection
 			//if (shadingData.bsdf->isPureSpecular() == false) {
-				VPLs.emplace_back(shadingData, pathThroughput * Le);
 			//}
 
 			float russianRouletteProbability = min(pathThroughput.Lum(), 0.9f);
@@ -763,6 +819,7 @@ public:
 			{
 				return;
 			}
+				VPLs.emplace_back(shadingData, pathThroughput * Le);
 			Vec3 wi;
 			Colour indirect;
 			float pdf;
@@ -798,8 +855,8 @@ public:
 #
 			// Direction from the hit point (x) to the VPL (xi)
 			Vec3 wi = vpl.shadingData.x - shadingData.x;
-			wi = wi.normalize();
 			float distance = wi.length();
+			wi = wi.normalize();
 
 
 			// Check visibility between x and xi
@@ -818,7 +875,7 @@ public:
 			// BSDF at the hit point x
 			Colour fr_x = shadingData.bsdf->evaluate(shadingData, wi);
 
-			if (shadingData.bsdf->isLight() || vpl.shadingData.bsdf == nullptr) {
+			if (vpl.shadingData.bsdf == nullptr || vpl.shadingData.bsdf->isLight()) {
 				indirect = indirect + (fr_x * geometryTerm  * vpl.Le);
 			}
 			else {
@@ -851,11 +908,11 @@ public:
 
 			Colour indirectVPL(0.0f, 0.0f, 0.0f);
 
-			//if (!shadingData.bsdf->isPureSpecular()) {
+			if (!shadingData.bsdf->isPureSpecular()) {
 				indirectVPL = pathThroughput * computeVPLContribution(shadingData, sampler);
 				direct = direct + indirectVPL;
 				//indirectVPL = computeVPLContribution(shadingData, sampler);
-			//}
+			}
 
 			if (depth > MAX_DEPTH)
 			{

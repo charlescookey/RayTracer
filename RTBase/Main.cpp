@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
 	//std::string sceneName = "bathroom";
 	//std::string sceneName = "kitchen";
 	//std::string sceneName = "coffee";
-	std::string filename = "GI2.hdr";
+	std::string filename = "radiosity.hdr";
 	unsigned int SPP = 8192;
 
 	if (argc > 1)

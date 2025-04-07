@@ -7,6 +7,8 @@
 #include "Materials.h"
 #include "Lights.h"
 
+
+//for debugging
 bool UseBVH = true;
 
 class Camera

@@ -370,6 +370,7 @@ public:
 
 			float BinScale = (boundsMax - boundsMin) / BINS_COUNT;
 			for (int i = 0; i < BINS_COUNT - 1; i++) {
+				// Calculate cost of splitting at this bin using SAH
 				float cost = C_bounds + ((leftArea[i] / parentArea) * leftCount[i] * C_isect) + ((rightArea[i] / parentArea) * rightCount[i] * C_isect);
 				if (cost < bestCost) {
 					bestCost = cost;
@@ -386,6 +387,7 @@ public:
 		return num * area;
 	}
 
+	//recursively build the bvh
 	void RecursiveBuild(std::vector<Triangle*>& inputTriangles)
 	{
 		// Add BVH building code here
@@ -435,6 +437,7 @@ public:
 
 	}
 
+	//traverses the bvn
 	void traverse(const Ray& ray, const std::vector<Triangle>& InputTriangles, IntersectionData& intersection)
 	{
 		// Add BVH Traversal code here

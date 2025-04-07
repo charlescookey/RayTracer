@@ -39,6 +39,7 @@ public:
 //1/1024
 #define PSSs2 0.0009765625f
 
+//The priamiary space state
 class PSS {
 public:
 	std::vector<float> pssCoords;
@@ -65,6 +66,7 @@ public:
 		return pssCoords[currentIndex++];
 	}
 
+	//mutate the value of the coordinate
 	float mutate(float input)
 	{
 		float r1 = random.next();
@@ -79,6 +81,7 @@ public:
 		return std::fmod(input + delta + 1.0f, 1.0f); // wrap around
 	}
 
+	//when a small step is taken
 	void smallStepPerturb(int timer) {
 		for (int i = 0; i < pssCoords.size(); i++)
 		{

@@ -48,6 +48,7 @@ public:
 	//Filter
 	oidn::FilterRef filter;
 
+	//films to store albedo and normals
 	Film* albedoFilm;
 	Film* normalFilm;
 
@@ -77,6 +78,7 @@ public:
 		if (device.getError(errorMessage) != oidn::Error::None)
 			std::cout << "Error: " << errorMessage << std::endl;
 
+		//initialize buffers
 		colourBuf = device.newBuffer(film->width * film->height * 3 * sizeof(float));
 		albedoBuf = device.newBuffer(film->width * film->height * 3 * sizeof(float));
 		normalBuf = device.newBuffer(film->width * film->height * 3 * sizeof(float));
@@ -84,6 +86,7 @@ public:
 		//Expensive operatoiom, add print message 
 		filter = device.newFilter("RT");
 
+		//set the images
 		filter.setImage("color", colourBuf, oidn::Format::Float3, film->width, film->height); // beauty
 		filter.setImage("albedo", albedoBuf, oidn::Format::Float3, film->width, film->height); // auxiliary
 		filter.setImage("normal", normalBuf, oidn::Format::Float3, film->width, film->height); // auxiliary
@@ -91,6 +94,8 @@ public:
 		filter.set("hdr", true); // beauty image is HDR
 		filter.commit();
 
+		
+		//initailize our films
 		albedoFilm = new Film();
 		albedoFilm->init((unsigned int)scene->camera.width, (unsigned int)scene->camera.height, new BoxFilter());
 
@@ -290,6 +295,7 @@ public:
 		return Colour(0.0f, 0.0f, 0.0f);
 	}
 	
+	//Single threaded function for Path tracing
 	void renderST()
 	{
 		film->incrementSPP();
@@ -317,6 +323,7 @@ public:
 		}
 	}
 
+	//Rendering function for light tracing single threaded
 	void renderSTLight()
 	{
 		film->incrementSPP();
@@ -342,7 +349,7 @@ public:
 			}
 		}
 	}
-
+	//Rendering function for PSSMLT
 	void renderSTMLT()
 	{
 		film->incrementSPP();
@@ -361,8 +368,8 @@ public:
 			}
 		}
 	}
-
-	int type = 4;
+	//To decide what type of algorithm to call
+	int type = 0;
 	
 	void render(){
 		if (type == 0){
@@ -382,11 +389,11 @@ public:
 		}
 		else
 		{
-			renderST();
+			renderST();//Single threaded path tracing
 
 		}
 	}
-
+	//Rendering function for Mutli threaded Path Tracing
 	void renderMT()
 	{
 		film->incrementSPP();
@@ -420,6 +427,7 @@ public:
 		}
 	}
 
+	//Rendering function for Mutli threaded Instant Radiosity
 	void renderMTRadiosity()
 	{
 		film->incrementSPP();
@@ -453,6 +461,7 @@ public:
 		}
 	}
 
+	//Rendering function for Mutli threaded Path Tracing + Denoise
 	void renderMTAndDenoise()
 	{
 		film->incrementSPP();
@@ -503,6 +512,7 @@ public:
 
 	}
 	
+	//rendering function that renders a tile of the image for path tracing
 	void renderTile(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
 	{
 		int startX = tileX * tileSize;
@@ -534,6 +544,7 @@ public:
 		//canvas->present();
 	}
 
+	//rendering function that renders a tile of the image for radiosity
 	void renderTileRad(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
 	{
 		int startX = tileX * tileSize;
@@ -561,6 +572,8 @@ public:
 
 		//canvas->present();
 	}
+
+	//this splats the image, albedo and normal for denoising
 	void getTileFilms(int tileX, int tileY, int sizeX, int sizeY, Scene* scene, GamesEngineeringBase::Window* canvas)
 	{
 		int startX = tileX * tileSize;
@@ -589,7 +602,7 @@ public:
 		}
 	}
 
-
+	//Performs denoising using OpenImageDenoise
 	void denoise()
 	{
 		int numPixels = film->width * film->height;
@@ -652,6 +665,7 @@ public:
 	}
 
 
+	//Coonect to camera and splats if visible
 	void connectToCamera(Vec3 p, Vec3 n, Colour col) {
 		float x;
 		float y;
@@ -677,6 +691,7 @@ public:
 		film->splat(x, y, contrib);
 	};
 
+	//Start for the light tracing
 	void lightTrace(Sampler* sampler) {
 		float pmf;
 		float pdfPosition;
@@ -703,6 +718,7 @@ public:
 		}
 	};
 	
+	//Light tracing path
 	void lightTracePath(Ray& r, Colour pathThroughput, Colour Le, Sampler* sampler, int depth) {
 		IntersectionData intersection = scene->traverse(r);
 		ShadingData shadingData = scene->calculateShadingData(intersection, r);
@@ -752,6 +768,7 @@ public:
 
 	std::vector<VPL> VPLs;
 
+	//Inital call to trace all VPLS
 	void traceVPLs(Sampler* sampler, int N_VPLs) {
 		VPLs.clear();
 		
@@ -791,6 +808,7 @@ public:
 		}
 	}
 
+	//Recusivels adds vpls to vector
 	void VPLTracePath(Ray& r, Colour pathThroughput, Colour Le, Sampler* sampler, int depth) {
 		if (depth > MAX_DEPTH)
 		{
@@ -848,6 +866,7 @@ public:
 	//vpls[i].shadingData.bsdf->evaluate(vpls[i].shadingData, -wi);
 	//vpls[i].Le* shadingData.bsdf->evaluate(shadingData, wi)* GTerm;
 
+	//Computes the contribution of the VPLs to the shading
 	Colour computeVPLContribution(const ShadingData& shadingData, Sampler* sampler) {
 		Colour indirect(0.0f, 0.0f, 0.0f);
 
@@ -887,6 +906,7 @@ public:
 		return indirect;
 	}
 
+	//Recursively traces and addd teh direct light and the VPL contributions
 	Colour pathTraceRadiosity(Ray& r, Colour& pathThroughput, int depth, Sampler* sampler, bool canHitLight = true)
 	{
 		IntersectionData intersection = scene->traverse(r);
@@ -941,7 +961,7 @@ public:
 		return scene->background->evaluate(r.dir);
 	}
 
-
+	//Calculates the acceptance for PSSMLT
 	float calculateAcceptance(Colour current, Colour proposed) {
 		float currentLum = current.Lum();
 		float proposedLum = proposed.Lum();
@@ -954,6 +974,7 @@ public:
 
 	int M = 100;
 
+	//Generates the inital path
 	Colour genPathC(PSSSampler* sampler, float&x , float&y) {
 
 		x = sampler->nextPSSC() * film->width;
@@ -962,6 +983,7 @@ public:
 		return pathTrace(x, y, sampler);
 	}
 
+	//Generates the proposed path
 	Colour genPathP(PSSSampler* sampler, float& x, float& y) {
 		x = sampler->nextPSSP() * film->width;
 		y = sampler->nextPSSP() * film->height;
@@ -969,6 +991,7 @@ public:
 		return pathTrace(x, y, sampler);
 	}
 
+	//Calculates the normalization constant for the PSSMLT
 	float getNormalization(PSSSampler* sampler) {
 		float b = 0.0f;
 		for (int i = 0; i < M; i++) {
@@ -986,6 +1009,7 @@ public:
 
 	float largeStepProb = 0.3f;
 
+	/// PSSMLT rendering function
 	void PSSMLTRender(int numSamples) {
 		if (pssSampler == nullptr) {
 			pssSampler = new PSSSampler();

@@ -28,5 +28,3 @@ Renderer/
 ![bathroom](RTBase/images/bathroom.png)
 ![lighTracing](RTBase/images/GI3.png)
 
-  
-https://github.com/charlescookey/RayTracer/blob/main/RTBase/images/GI2.png

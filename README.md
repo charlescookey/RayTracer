@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project provides a foundational ray tracing renderer for students studying Advanced Computer Graphics. The codebase is structured to facilitate learning by including sections where students need to complete missing implementations.
+This project contains the implementation of mutliple light transport algorithms, including light tracing, instant radiosity, primary space metropolis light transport.
 
 ## Project Structure
 
@@ -22,19 +22,8 @@ Renderer/
 ```
 
 ## Scenes
+![forest](images/GI2.png)
+![forest](images/GI3.png)
 
-Scenes can be found on the Moodle page. Please download them and place them in the working directory.
-
-## Tasks for Students
-
-Several functions and algorithms are left incomplete and require implementation. Look for comments such as:
-
-```cpp
-// Add code here
-```
-
-## Notes
-
-- Ensure your implementations are efficient and well-commented.
-- Test incremental changes using appropriate scenes.
   
+https://github.com/charlescookey/RayTracer/blob/main/RTBase/images/GI2.png

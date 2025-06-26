@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project contains the implementation of mutliple light transport algorithms, including light tracing, instant radiosity, primary space metropolis light transport.
+This project contains the implementation of mutliple light transport algorithms, including light tracing, instant radiosity, primary space metropolis light transport. A BVH was used to optimisie ray intersection.
 
 ## Project Structure
 
@@ -22,8 +22,11 @@ Renderer/
 ```
 
 ## Scenes
-![forest](images/GI2.png)
-![forest](images/GI3.png)
+![corneldenoise](RTBase/images/cornelDenoise.png)
+![living](RTBase/images/living.png)
+![materials](RTBase/images/radiosity.png)
+![bathroom](RTBase/images/bathroom.png)
+![lighTracing](RTBase/images/GI3.png)
 
   
 https://github.com/charlescookey/RayTracer/blob/main/RTBase/images/GI2.png
